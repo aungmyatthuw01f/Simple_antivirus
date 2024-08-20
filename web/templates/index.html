@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>Malware Scanner</title>
+    <style>
+        .loader {
+            border: 8px solid #f3f3f3;
+            border-top: 8px solid #3498db;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1 class="mt-5">Scan Files for Malware</h1>
+    <form id="uploadForm" enctype="multipart/form-data">
+        <div class="mb-3">
+            <label for="file" class="form-label">Select files:</label>
+            <input type="file" class="form-control" id="file" name="file" multiple required>
+        </div>
+        <div class="form-check mb-3">
+            <input type="checkbox" class="form-check-input" id="detailed" name="detailed">
+            <label class="form-check-label" for="detailed">Detailed Report</label>
+        </div>
+        <button type="button" class="btn btn-primary" onclick="uploadFile()">Scan</button>
+    </form>
+    <div id="resultArea" class="mt-4"></div>
+</div>
+<div id="loadingOverlay" class="loading-overlay">
+    <div class="loader"></div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+let lastDetailArea = null;
+
+function uploadFile() {
+    var formData = new FormData(document.getElementById('uploadForm'));
+    var detailed = $('#detailed').is(':checked');
+    formData.append('detailed', detailed);
+    $('#loadingOverlay').css('display', 'flex');
+
+    $.ajax({
+        url: '/upload',
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(data) {
+            displayResults(data, detailed);
+            $('#loadingOverlay').css('display', 'none');
+        },
+        error: function() {
+            alert('File upload failed.');
+            $('#loadingOverlay').css('display', 'none');
+        }
+    });
+}
+
+function displayResults(data, detailed) {
+    var resultArea = $('#resultArea');
+    resultArea.empty();
+
+    if (data.error) {
+        resultArea.append($('<div>', { 'class': 'alert alert-danger', text: data.error }));
+    } else {
+        data.forEach((result, index) => {
+            var alertClass = result.positives > 0 ? 'alert-danger' : 'alert-success';
+            var resultText = `File: ${result.filename} - ${result.message}`;
+            var resultDiv = $('<div>').addClass(`alert ${alertClass}`).html(resultText);
+
+            if (detailed && result.scans) {
+                var detailsButton = $('<button>')
+                    .addClass('btn btn-link')
+                    .text('Details')
+                    .click(() => toggleDetails(result, index));
+                resultDiv.append(detailsButton);
+            }
+
+            resultArea.append(resultDiv);
+        });
+    }
+}
+
+function toggleDetails(result, index) {
+    let detailsId = `details-${index}`;
+    let existingDetails = $(`#${detailsId}`);
+
+    if (existingDetails.length) {
+        existingDetails.remove();
+        return;
+    }
+
+    if (lastDetailArea) {
+        lastDetailArea.remove();
+    }
+
+    var detailsArea = $('<div>').attr('id', detailsId);
+    detailsArea.append($('<div>', { text: `Detection Date: ${result.scan_date}` }));
+    detailsArea.append($('<h4>', { text: 'Detailed Malware Information:' }));
+    detailsArea.append(createDetailTable(result.scans));
+    $('#resultArea').append(detailsArea);
+
+    lastDetailArea = detailsArea;
+}
+
+function createDetailTable(scans) {
+    const table = $('<table class="table table-responsive table-bordered"><thead><tr><th>Engine</th><th>Result</th><th>Update</th><th>Version</th></tr></thead><tbody></tbody></table>');
+    Object.entries(scans).forEach(([engine, scan]) => {
+        const row = $('<tr>');
+        if (scan.detected) {
+            row.addClass('table-danger');
+        }
+        row.append($('<td>', { text: engine }));
+        row.append($('<td>', { text: scan.detected ? scan.result : 'Not detected' }));
+        row.append($('<td>', { text: scan.update }));
+        row.append($('<td>', { text: scan.version }));
+        table.find('tbody').append(row);
+    });
+    return table;
+}
+</script>
+</body>
+</html>
